@@ -1,0 +1,308 @@
+/* calls API "https://api.weather.gov/points/40.4406,-79.9959"
+Then grabs weather forecast data from https://api.weather.gov/gridpoints/PBZ/78,66/forecast
+parses only the first three 'period' to save SRAM and prints over serial and OLED.
+Forecast updates every hour. 
+Also grabs the time over NTP (time.h)
+RGB_LEDs turn on for extra razzle-dazzle
+Code + hardware rev: July 14, 2025
+
+Hardware: ESP32-WROOM-32 Module + Custom PCB.
+Board: ESP32 Dev Module
+--------------------------------------------------------------------------
+i2C Addresses and hardware details:
+OLED                         0x3C
+---------------------------------------------------------------------------
+Authors: Ryan, ChatGPT
+Hardware: IoT PlayGND PCB=Ryan, OTS aliExpress stuff
+*/
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <Adafruit_NeoPixel.h>
+#include <ArduinoJson.h>
+#include <Wire.h>
+#include <GyverOLED.h>
+#include <time.h>  // <-- Include time functions
+
+//============NeoPixel Setup============================================
+// Which pin on the Arduino is connected to the NeoPixels?
+#define LED_PIN    4
+// How many NeoPixels are attached to the Arduino?
+#define LED_COUNT 4
+// Declare our NeoPixel strip object:
+Adafruit_NeoPixel pixels(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+#define LEDpin 23 
+
+// OLED setup
+GyverOLED<SSH1106_128x64> oled; //the 1.3" OLED screen
+
+// =========================== WiFi Config =============================
+const char* ssid = "CMU-DEVICE";
+const char* password = "";
+
+// =========================== Weather API Config =============================
+const char* host = "api.weather.gov";
+const int httpsPort = 443;
+WiFiClientSecure client;
+
+// =========================== Globals =============================
+unsigned long lastFetch = 0;
+const unsigned long interval = 3600000; // 1 hour
+String forecastText = "";  // Full scroll text
+
+// Timezone offset (e.g. UTC-5 hours for EST)
+const long gmtOffset_sec = -5 * 3600;
+const int daylightOffset_sec = 3600;  // 1 hour daylight saving
+
+void setup() {
+  Wire.begin();
+  Serial.begin(115200);
+  pinMode(LEDpin, OUTPUT);
+  delay(100);
+
+  pixels.begin();           // INITIALIZE NeoPixel strip object (REQUIRED)
+  pixels.clear(); // Set all pixel colors to 'off'
+
+  pixels.setPixelColor(0, pixels.Color(10, 0, 0)); //Sets RGB values from 0 (off) to 255 (max) brightness
+  pixels.setPixelColor(1, pixels.Color(0, 10, 0));
+  pixels.setPixelColor(2, pixels.Color(5, 5, 0));
+  pixels.setPixelColor(3, pixels.Color(0, 0, 10));
+  pixels.show(); 
+
+  oled.init();
+  oled.setContrast(255);
+  oled.setScale(1); //font size 1=small, 3=huge
+  oled.clear();
+  oled.setCursor(0, 0);
+  oled.print("Connecting...");
+  oled.update();
+
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\n✅ Connected to WiFi!");
+  oled.clear();
+  Serial.println("\nWiFi connected. IP address: " + WiFi.localIP().toString());
+  oled.setCursorXY(0,14);
+  oled.print("WiFi@ " + WiFi.localIP().toString() );
+  oled.update();
+  // Get MAC address and print it
+  String mac = WiFi.macAddress();
+  Serial.print("ESP32 MAC Address: ");
+  Serial.println(mac);
+  oled.setCursorXY(0,26);
+  oled.print("MAC "); oled.print(mac); 
+  oled.rect(0, 9, 127, 10);  // a 1-pixel tall rectangle
+  oled.update();
+
+  client.setInsecure(); // Disable certificate validation
+
+  // ====== Setup NTP time sync =======
+  configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
+  Serial.println("Waiting for time synchronization...");
+  oled.setCursor(0, 26);
+  oled.print("Fetching NTP Time...");
+  oled.update();
+
+  struct tm timeinfo;
+  while (!getLocalTime(&timeinfo)) {
+    delay(500);
+    Serial.print(".");
+    oled.print(".");
+    oled.update();
+  }
+  Serial.println("\nTime synchronized!");
+
+  fetchForecast();  // Initial forecast
+}
+
+// =============== New function to show current time on OLED ===============
+void showCurrentTime() {
+  struct tm timeinfo;
+  oled.setScale(2); //font size 1=small, 3=huge
+  if (getLocalTime(&timeinfo)) {
+    digitalWrite(LEDpin, HIGH); //blink the RED led when the time updates
+    oled.clear();
+    oled.setCursor(0, 0);
+    oled.print("Time:");
+    oled.setCursor(0, 2);
+    char timeStr[20];
+    // Format: YYYY-MM-DD HH:MM:SS
+    strftime(timeStr, sizeof(timeStr), "%Y-%m-%d", &timeinfo);
+    oled.print(timeStr);
+    oled.setCursor(0, 4);
+    strftime(timeStr, sizeof(timeStr), "%H:%M:%S", &timeinfo);
+    oled.print(timeStr);
+    oled.update();
+  } else {
+    oled.clear();
+    oled.setCursor(0, 0);
+    oled.print("Time not");
+    oled.setCursor(0, 2);
+    oled.print("available");
+    oled.update();
+  }
+  delay(350);
+  digitalWrite(LEDpin, LOW);
+}
+
+// =========================== Main Loop =============================
+void loop() {
+  unsigned long now = millis();
+
+  if (now - lastFetch >= interval || lastFetch == 0) {
+    Serial.println("\n🔄 Fetching updated forecast...");
+    fetchForecast();
+    lastFetch = now;
+  }
+
+  showCurrentTime();        // Show current time on OLED
+  delay(3000);             // Show time for 3 seconds before scrolling forecast
+
+  scrollOLED(forecastText.c_str(), 50);  // Scroll speed. small number scrolls faster
+}
+
+// =========================== OLED Scrolling =============================
+void scrollOLED(const char* text, int delayMs) {
+  int len = strlen(text);
+  String scrollBuffer = "     ";  // Add space before start
+
+  scrollBuffer += text;
+  scrollBuffer += "     ";  // Add space after end
+
+  for (int i = 0; i < scrollBuffer.length(); i++) {
+    oled.clear();
+    oled.setScale(2); //font size 1=small, 3=huge
+    oled.setCursor(0, 0);  //
+    oled.print("Forecast: ");
+    oled.setCursor(0, 3);  // Vertical position (line 3)
+    oled.print(scrollBuffer.substring(i));
+
+    oled.update();
+    delay(delayMs);
+  }
+}
+
+// =========================== Format Forecast =============================
+void printFormattedForecast(JsonArray periods) {
+  forecastText = "";
+  Serial.println("\n========== 🌦️ Weather Forecast ==========\n");
+
+  for (int i = 0; i < 3 && i < periods.size(); i++) {
+    JsonObject period = periods[i];
+
+    String name = period["name"] | "N/A";
+    int temp = period["temperature"] | 0;
+    String unit = period["temperatureUnit"] | "F";
+    String shortForecast = period["shortForecast"] | "";
+    String wind = period["windSpeed"] | "";
+    String windDir = period["windDirection"] | "";
+    int precip = period["probabilityOfPrecipitation"]["value"] | 0;
+
+    Serial.println("--------------------------------------------------");
+    Serial.printf("📅 %s\n", name.c_str());
+    Serial.printf("🌡️  Temp: %d°%s\n", temp, unit.c_str());
+    Serial.printf("💧 Precip Chance: %d%%\n", precip);
+    Serial.printf("🌬️  Wind: %s %s\n", windDir.c_str(), wind.c_str());
+    Serial.printf("⛅ Forecast: %s\n", shortForecast.c_str());
+
+    forecastText += name + ": " + temp + unit;
+    if (precip > 0) forecastText += ", " + String(precip) + "% rain";
+    if (wind != "") forecastText += ", Wind " + windDir + " " + wind;
+    forecastText += ", " + shortForecast + "  ***  ";
+  }
+
+  forecastText.trim();
+  Serial.println("\n==========================================");
+}
+
+// =========================== Fetch Forecast =============================
+void fetchForecast() {
+  if (!client.connect(host, httpsPort)) {
+    Serial.println("❌ Connection failed (step 1)");
+    return;
+  }
+
+  String url = "/points/40.4406,-79.9959"; // Pittsburgh
+  client.print(String("GET ") + url + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" +
+               "User-Agent: ESP32\r\n" +
+               "Connection: close\r\n\r\n");
+
+  while (client.connected()) {
+    String line = client.readStringUntil('\n');
+    if (line == "\r") break;
+  }
+
+  DynamicJsonDocument doc(1024);
+  DeserializationError err = deserializeJson(doc, client);
+  if (err) {
+    Serial.print("❌ Failed to parse step 1 JSON: ");
+    Serial.println(err.c_str());
+    client.stop();
+    return;
+  }
+
+  const char* forecastUrl = doc["properties"]["forecast"];
+  if (!forecastUrl) {
+    Serial.println("❌ Forecast URL not found.");
+    client.stop();
+    return;
+  }
+
+  Serial.print("📡 Forecast URL: ");
+  Serial.println(forecastUrl);
+  client.stop();
+  delay(500);
+
+  // Step 2: Get forecast data
+  if (!client.connect(host, httpsPort)) {
+    Serial.println("❌ Connection failed (step 2)");
+    return;
+  }
+
+  String path = String(forecastUrl);
+  path.replace("https://api.weather.gov", "");
+  client.print(String("GET ") + path + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" +
+               "User-Agent: ESP32\r\n" +
+               "Connection: close\r\n\r\n");
+
+  while (client.connected()) {
+    String line = client.readStringUntil('\n');
+    if (line == "\r") break;
+  }
+
+  StaticJsonDocument<768> filter;
+  for (int i = 0; i < 3; i++) {
+    filter["properties"]["periods"][i]["name"] = true;
+    filter["properties"]["periods"][i]["temperature"] = true;
+    filter["properties"]["periods"][i]["temperatureUnit"] = true;
+    filter["properties"]["periods"][i]["shortForecast"] = true;
+    filter["properties"]["periods"][i]["windSpeed"] = true;
+    filter["properties"]["periods"][i]["windDirection"] = true;
+    filter["properties"]["periods"][i]["probabilityOfPrecipitation"]["value"] = true;
+  }
+
+  DynamicJsonDocument forecastDoc(2048);
+  err = deserializeJson(forecastDoc, client, DeserializationOption::Filter(filter));
+  client.stop();
+
+  if (err) {
+    Serial.print("❌ Forecast JSON parse failed: ");
+    Serial.println(err.c_str());
+    return;
+  }
+
+  JsonArray periods = forecastDoc["properties"]["periods"];
+  if (periods.isNull() || periods.size() < 3) {
+    Serial.println("⚠️ Forecast data incomplete.");
+    return;
+  }
+
+  printFormattedForecast(periods);
+}

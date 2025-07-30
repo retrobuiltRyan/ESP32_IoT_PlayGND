@@ -1,0 +1,41 @@
+// SPDX-FileCopyrightText: 2024 Liz Clark for Adafruit Industries
+// SPDX-License-Identifier: MIT
+
+const int DIR = 19;
+const int STEP = 18;
+const int CW_BUTTON = 27;    // Clockwise button
+const int CCW_BUTTON = 26;   // Counterclockwise button
+
+const int microMode = 16;    // e.g. 1/16 microstepping
+const int stepsPerRevolution = 200 * microMode;
+
+void setup()
+{
+  pinMode(STEP, OUTPUT);
+  pinMode(DIR, OUTPUT);
+
+  pinMode(CW_BUTTON, INPUT);
+  pinMode(CCW_BUTTON, INPUT);
+}
+
+void loop()
+{
+  while (digitalRead(CW_BUTTON) == LOW) {
+    digitalWrite(DIR, HIGH); // Clockwise
+    stepOnce();
+  }
+
+  while (digitalRead(CCW_BUTTON) == LOW) {
+    digitalWrite(DIR, LOW);  // Counterclockwise
+    stepOnce();
+  }
+}
+
+// Function to make a single step
+void stepOnce()
+{
+  digitalWrite(STEP, HIGH);
+  delayMicroseconds(100); // Adjust speed
+  digitalWrite(STEP, LOW);
+  delayMicroseconds(100);
+}

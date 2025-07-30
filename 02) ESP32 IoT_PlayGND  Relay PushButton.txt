@@ -1,0 +1,30 @@
+//Relay trigger with a button!
+// constants won't change. They're used here to set pin numbers:
+const int buttonPin = 27;  // pushbutton GPIO
+const int RelayPin = 13;    //34 GPIO connector to relay 
+
+// variables will change:
+int buttonState = 0;  // variable for reading the pushbutton status
+
+void setup() {
+  // initialize the Relay pin as an output:
+  pinMode(RelayPin, OUTPUT);
+  // initialize the pushbutton pin as an input:
+  pinMode(buttonPin, INPUT);
+  Serial.begin(115200);
+}
+
+void loop() {
+  // read the state of the pushbutton value:
+  buttonState = digitalRead(buttonPin);
+
+  // check if the pushbutton is pressed. If it is, the buttonState is HIGH:
+  if (buttonState == HIGH) {
+    // turn LED on:
+    digitalWrite(RelayPin, LOW);
+  } else {
+    // turn LED off:
+    digitalWrite(RelayPin, HIGH);
+  }
+  Serial.println(buttonState);
+}
