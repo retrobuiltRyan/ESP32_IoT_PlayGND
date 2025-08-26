@@ -7,8 +7,8 @@ Learning Goal: Quick start "how to" develop and build your own IIoT solution wit
 
 | Category       | Components                                                                 |
 |----------------|----------------------------------------------------------------------------|
-| **Microcontroller** | ESP32-WROOM-32                                                           |
-| **Sensors**         | - Temperature & Humidity (SHT45) <br> - Voltage, Current, Power (INA260) <br> - Pushbutton (x4) <br> - Rotary Encoder |
+| **Microcontroller** | ESP32-WROOM-32                                                        |
+| **Sensors/Input**   | - Temperature & Humidity (SHT45) <br> - Voltage, Current, Power (INA260) <br> - Pushbutton (x4) <br> - Rotary Encoder |
 | **Actuators**       | - Relay (10A, 277VAC, 30VDC) <br> - DRV8871 (DC Motor Drive) <br> - A4988 (Stepper Motor Drive) <br> - 4 CH Servo (PCA9685) |
 | **Output**          | - RGB LED (x4) <br> - OLED (128x64 pixel) <br> - Buzzer |
 
