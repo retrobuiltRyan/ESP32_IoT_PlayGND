@@ -1,5 +1,5 @@
 # ESP32_IoT_PlayGND
-Internet of Things + MQTT sensor,input, actuator, motor drive learning board. Can be powered with a power drill battery for immediate remote deployment and sensor monitoring.
+Internet of Things + MQTT sensor, input, actuator, motor drive learning board. Can be powered with a power drill battery for immediate remote deployment and sensor monitoring.
 
 Learning Goal: Quick start "how to" develop and build your own IIoT solution with scale and affordability in mind using off-the-shelf hardware and lightweight software.
 
