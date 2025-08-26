@@ -46,8 +46,8 @@ Adafruit_NeoPixel pixels(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 String LEDpin_status = "OFF";
 
 /************************* WiFi Access Point **************************/
-#define WLAN_SSID       "TMOBILE-A071"
-#define WLAN_PASS       "popular.zigzagged.aerospace.portable"
+#define WLAN_SSID       "CMU-DEVICE" //your Wifi name
+#define WLAN_PASS       ""           //your wifi password
 
 /************************* MQTT Broker Setup **************************/
 #define AIO_SERVER      "test.mosquitto.org"
@@ -272,4 +272,5 @@ void voltage_INA260(){ // read only voltage from the INA260 sensor
   oled.print(ina260.readBusVoltage()/1000); 
   oled.print("V");
   oled.update();
+
 }
