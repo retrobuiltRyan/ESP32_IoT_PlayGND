@@ -13,6 +13,7 @@ Learning Goal: Quick start "how to" develop and build your own IIoT solution wit
 | **Output**          | - RGB LED (x4) <br> - OLED (128x64 pixel) <br> - Buzzer |
 
 <img width="651" height="528" alt="IoT PlayGND pic" src="https://github.com/user-attachments/assets/1f1d1eb7-b0e2-413c-a86f-5fc83ce769eb" />
+<img width="1013" height="876" alt="3D render" src="https://github.com/user-attachments/assets/915698da-f677-4ff7-9f3d-513e4c67dd6d" />
 
 ESP-WROOM-32 ESP32: https://www.amazon.com/gp/product/B0D8Q8XFRK/
 
