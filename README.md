@@ -9,7 +9,7 @@ Learning Goal: Quick start "how to" develop and build your own IIoT solution wit
 |----------------|----------------------------------------------------------------------------|
 | **Microcontroller** | ESP32-WROOM-32                                                           |
 | **Sensors**         | - Temperature & Humidity (SHT45) <br> - Voltage, Current, Power (INA260) <br> - Pushbutton (x4) <br> - Rotary Encoder |
-| **Actuators**       | - Relay (10A, 277VAC, 30VDC) <br> - DRV8871 (DC Motor Drive) <br> - A4988 (Stepper Motor Drive) <br) 4 CH Servo (PCA9685) |
+| **Actuators**       | - Relay (10A, 277VAC, 30VDC) <br> - DRV8871 (DC Motor Drive) <br> - A4988 (Stepper Motor Drive) <br> 4 CH Servo (PCA9685) |
 | **Output**          | - RGB LED (x4) <br> - OLED (128x64 pixel) <br> - Buzzer |
 
 <img width="651" height="528" alt="IoT PlayGND pic" src="https://github.com/user-attachments/assets/1f1d1eb7-b0e2-413c-a86f-5fc83ce769eb" />
