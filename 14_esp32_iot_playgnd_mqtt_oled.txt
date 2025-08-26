@@ -1,0 +1,278 @@
+//14_esp32_iot_playgnd_mqtt_oled
+
+/* temp and humidity sensor is integrated into MQTT, publishes a JSON formatted string to broker)
+Reads battery voltage with INA260(prints to screen)
+Code + hardware rev: June 4, 2025
+
+Hardware: ESP32-WROOM-32 Module + Custom PCB + Adafruit STEMMA QT boards.
+Board: ESP32 Dev Module
+--------------------------------------------------------------------------
+i2C Addresses and hardware details:
+OLED                         0x3C
+INA_260 (V,I,P sensor)       0x41 (default is 0x40)
+PCA9685 PWM driver           0x40                           buck converter "B" = 6.7V
+SHT45 (temp humidity sensor) 0x44
+PCA9685 (all call)           0x70 (would talk to EVERY PCA9685 if there were a bunch on the i2c line)
+DRV8871 (DC motor driver)                                    buck converter "A" = 9V
+A4988 Stepper Drive (always enabled bc i forgot to wire it)  buck converter "A" = 9V
+NeoPixls 0-3 
+---------------------------------------------------------------------------
+Authors: Adafruit, Shobhit, Ryan, ChatGPT
+Hardware: IoT PlayGND PCB=Ryan, Adafruit modules
+
+*/
+//Librariies used in this 
+#include <WiFi.h>
+#include <Adafruit_NeoPixel.h>
+#include "Adafruit_MQTT.h"
+#include "Adafruit_MQTT_Client.h"
+#include <ArduinoJson.h>
+#include "Adafruit_SHT4x.h"  // <--- SHT45 Sensor Library
+#include <Adafruit_INA260.h>
+Adafruit_INA260 ina260 = Adafruit_INA260();
+#define INA260_ADDRESS 0x41  // Example: use 0x41 if A0 pin is tied to VCC
+#include <GyverOLED.h>
+GyverOLED<SSH1106_128x64> oled;
+
+// Which pin on the Arduino is connected to the NeoPixels?
+#define LED_PIN    4
+
+// How many NeoPixels are attached to the Arduino?
+#define LED_COUNT 4
+
+// Declare our NeoPixel strip object:
+Adafruit_NeoPixel pixels(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+#define LEDpin 23 
+#define RELAY1pin 13
+String LEDpin_status = "OFF";
+
+/************************* WiFi Access Point **************************/
+#define WLAN_SSID       "CMU-DEVICE" //your Wifi name
+#define WLAN_PASS       ""           //your wifi password
+
+/************************* MQTT Broker Setup **************************/
+#define AIO_SERVER      "test.mosquitto.org"
+#define AIO_SERVERPORT  1883
+#define AIO_USERNAME    ""
+#define AIO_KEY         ""
+
+//************************MQTT feeds and topics setup*******************/
+WiFiClient client;
+Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
+
+//only publishes Temp and humidity (a redundant section when you see the vaule of the json string).
+Adafruit_MQTT_Publish Temperature = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/temperature");
+Adafruit_MQTT_Publish Humidity = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/humidity");
+
+//you can publish to theses topics via MQTTX... see code that controls hardware
+Adafruit_MQTT_Subscribe onoffbutton = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/LEDpin");
+Adafruit_MQTT_Subscribe RELAY1 = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/RELAY1pin");
+
+
+#define CLIENT_TELEMETRY_TOPIC AIO_USERNAME "/feeds/telemetry"
+
+
+//*************************Tempurature sensor setup***********************/
+Adafruit_SHT4x sht4 = Adafruit_SHT4x();  // <--- SHT45 object
+float tempC = 0.0;
+float humid = 0.0;
+
+
+void setup() {
+  oled.init(); oled.clear(); oled.setScale(1); //1 is small, 4 is huge 
+  oled.setCursorXY(0, 0); 
+  oled.print("  ESP32 IoT PlayGND");
+  oled.update();
+
+  pixels.begin();           // INITIALIZE NeoPixel strip object (REQUIRED)
+  pixels.clear(); // Set all pixel colors to 'off'
+
+  Serial.begin(115200);
+  // Wait until serial port is opened
+  while (!Serial) { delay(10); }
+
+  Serial.println("checking for Adafruit INA260");
+
+  if (!ina260.begin(INA260_ADDRESS)) {
+    Serial.println("Couldn't find INA260 chip");
+    while (1);
+  }
+  Serial.println("Found INA260 chip");
+
+  pinMode(LEDpin, OUTPUT);
+  pinMode(RELAY1pin, OUTPUT);
+
+  Serial.println("Connecting to WiFi...");
+  WiFi.begin(WLAN_SSID, WLAN_PASS);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected. IP address: " + WiFi.localIP().toString());
+  oled.setCursorXY(0,14);
+  oled.print("WiFi@ " + WiFi.localIP().toString() );
+  oled.update();
+  // Get MAC address and print it
+  String mac = WiFi.macAddress();
+  Serial.print("ESP32 MAC Address: ");
+  Serial.println(mac);
+  oled.setCursorXY(0,26);
+  oled.print("MAC "); oled.print(mac); 
+  oled.rect(0, 9, 127, 10);  // a 1-pixel tall rectangle
+  oled.update();
+
+  mqtt.subscribe(&onoffbutton);
+  mqtt.subscribe(&RELAY1);
+
+  // Initialize SHT45 sensor
+  Serial.println("Initializing SHT4x...");
+  if (!sht4.begin()) {
+    Serial.println("Couldn't find SHT4x");
+    while (1) delay(10);
+  }
+//temp and humidity accuracy/ power/ read time. pick only one
+  //sht4.setPrecision(SHT4X_HIGH_PRECISION);
+  sht4.setPrecision(SHT4X_MED_PRECISION);
+  //sht4.setPrecision(SHT4X_LOW_PRECISION);
+
+  sht4.setHeater(SHT4X_NO_HEATER);
+  // a built-in resistive heater can turn on temporarily to warm the sensor, Evaporate condensation....
+  Serial.println("SHT4x sensor ready.");
+
+  delay(100);
+  pixels.setPixelColor(0, pixels.Color(10, 0, 0)); //Sets RGB values from 0 (off) to 255 (max) brightness
+  pixels.setPixelColor(1, pixels.Color(0, 10, 0));
+  pixels.setPixelColor(2, pixels.Color(5, 5, 0));
+  pixels.setPixelColor(3, pixels.Color(0, 0, 10));
+  pixels.show(); 
+}
+
+uint32_t x = 0, y = 0; //counters to track how many times 
+//temperature (x) and humidity (y) values are published to the MQTT broker 
+
+void loop() {
+  MQTT_connect();
+  voltage_INA260();
+  get_SHT45_data();         // Read SHT45 data
+  json_telemetry();         // Package and send telemetry
+
+//===================================================================================================================
+//if published topics match these checks, do something with the hardware
+  Adafruit_MQTT_Subscribe *subscription; //check for telemetry subscription data (5sec) sent to the ESP
+  while ((subscription = mqtt.readSubscription(5000))) {
+    if (subscription == &onoffbutton) {
+      if (strcmp((char *)onoffbutton.lastread, "1") == 0) {
+        digitalWrite(LEDpin, HIGH);
+        Serial.println("LED ON");
+      } else {
+        digitalWrite(LEDpin, LOW);
+        Serial.println("LED OFF");
+      }
+    }
+
+    if (subscription == &RELAY1) {
+      if (strcmp((char *)RELAY1.lastread, "1") == 0) {
+        digitalWrite(RELAY1pin, HIGH);
+        Serial.println("Relay ON");
+      } else {
+        digitalWrite(RELAY1pin, LOW);
+        Serial.println("Relay OFF");
+      }
+    }
+  }
+//==============block that publishes the solo temp data=========================
+  Serial.print("\nPublishing temperature... ");
+  if (!Temperature.publish(tempC)) {
+    Serial.println("Failed");
+  } else {
+    Serial.println("OK");
+    x++;
+  }
+//==============block that publishes the solo humidity data=========================
+  Serial.print("Publishing humidity... ");
+  if (!Humidity.publish(humid)) {
+    Serial.println("Failed");
+  } else {
+    Serial.println("OK");
+    y++;
+  }
+}
+
+// === SHT45 Sensor Reading ===
+void get_SHT45_data() {
+  sensors_event_t humidity_event, temp_event;
+  uint32_t timestamp = millis();
+
+  sht4.getEvent(&humidity_event, &temp_event);
+  timestamp = millis() - timestamp;
+
+  tempC = temp_event.temperature;
+  humid = humidity_event.relative_humidity;
+
+  Serial.print("Temperature: "); Serial.print(tempC); Serial.println(" °C");
+  Serial.print("Humidity: "); Serial.print(humid); Serial.println(" %");
+  Serial.print("Read duration (ms): "); Serial.println(timestamp);
+
+  oled.setCursorXY(0,40);
+  oled.print(tempC); oled.print(" C  ");
+  oled.print(humid); oled.print(" % H");
+  oled.update();
+}
+
+// === Telemetry JSON Pack + Publish ===
+void json_telemetry() {
+  LEDpin_status = digitalRead(LEDpin) ? "ON" : "OFF";
+
+  DynamicJsonDocument doc(1024);
+  doc["sensorType"] = "SHT45";
+  doc["Location"] = "MFI Office";
+  doc["temperature"] = tempC;
+  doc["humidity"] = humid;
+  doc["uptime"] = String(millis() / 1000) + " seconds";
+  doc["LEDpinStatus"] = LEDpin_status;
+  doc["RelayPinStatus"] = digitalRead(RELAY1pin);
+ // add more data strings here
+
+
+  String telemetry;
+  serializeJson(doc, telemetry);
+  Serial.print("Sending telemetry: ");
+  Serial.println(telemetry);
+
+  if (!mqtt.publish(CLIENT_TELEMETRY_TOPIC, telemetry.c_str())) {
+    Serial.println("Failed to send telemetry");
+  } else {
+    Serial.println("Telemetry sent successfully");
+  }
+}
+
+// === MQTT Connection Handler ===
+void MQTT_connect() {
+  int8_t ret;
+
+  if (mqtt.connected()) return;
+
+  Serial.print("Connecting to MQTT... ");
+  uint8_t retries = 3;
+  while ((ret = mqtt.connect()) != 0) {
+    Serial.print("Failed, code: ");
+    Serial.println(mqtt.connectErrorString(ret));
+    mqtt.disconnect();
+    delay(5000);
+    if (--retries == 0) {
+      Serial.println("Giving up on MQTT.");
+      while (1);
+    }
+  }
+  Serial.println("MQTT connected!");
+}
+
+void voltage_INA260(){ // read only voltage from the INA260 sensor
+  oled.setCursorXY(0,52);
+  oled.print("Battery: ");
+  oled.print(ina260.readBusVoltage()/1000); 
+  oled.print("V");
+  oled.update();
+
+}

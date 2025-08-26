@@ -1,0 +1,56 @@
+//07_esp32_iot_playgnd_drv8871_dc_drive_pushbuttons
+
+#include <Wire.h>
+#include <Adafruit_PWMServoDriver.h>
+
+// Define the PCA9685 driver
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
+
+// Define GPIO pins for forward and reverse control
+#define FORWARD_PIN 27
+#define REVERSE_PIN 26
+
+// Motor PWM channel assignments
+#define MOTOR_CH_FORWARD 4
+#define MOTOR_CH_REVERSE 5
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("Starting motor control with PCA9685");
+
+  // Setup GPIOs
+  pinMode(FORWARD_PIN, INPUT_PULLUP);
+  pinMode(REVERSE_PIN, INPUT_PULLUP);
+
+  // Setup PCA9685
+  pwm.begin();
+  pwm.setOscillatorFrequency(27000000);  // Set oscillator for better precision
+  pwm.setPWMFreq(490);                   // Set frequency to ~490 Hz
+  Wire.setClock(400000);                 // Fast I2C
+
+  // Make sure the motor is off initially
+  pwm.setPin(MOTOR_CH_FORWARD, 0, false);
+  pwm.setPin(MOTOR_CH_REVERSE, 0, false);
+}
+
+void loop() {
+  bool forward = digitalRead(FORWARD_PIN) == LOW;
+  bool reverse = digitalRead(REVERSE_PIN) == LOW;
+
+  if (forward && !reverse) {
+    pwm.setPWM(MOTOR_CH_FORWARD, 0, 2048);  // 50% duty forward
+    pwm.setPin(MOTOR_CH_REVERSE, 0, false); // off
+    Serial.println("Motor running FORWARD");
+  } else if (reverse && !forward) {
+    pwm.setPWM(MOTOR_CH_REVERSE, 0, 2048);  // 50% duty reverse
+    pwm.setPin(MOTOR_CH_FORWARD, 0, false); // off
+    Serial.println("Motor running REVERSE");
+  } else {
+    // Stop motor
+    pwm.setPin(MOTOR_CH_FORWARD, 0, false);
+    pwm.setPin(MOTOR_CH_REVERSE, 0, false);
+    Serial.println("Motor STOPPED");
+  }
+
+  delay(200); // basic debounce / poll interval
+}

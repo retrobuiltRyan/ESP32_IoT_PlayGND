@@ -1,0 +1,103 @@
+//11_esp32_iot_playgnd_ir_remote_oled
+
+#include <Wire.h>
+#include <GyverOLED.h>
+#include <IRremote.hpp>
+
+// OLED setup
+GyverOLED<SSH1106_128x64> oled;
+
+// IR setup
+#define IR_RECEIVE_PIN 34 // Adjust this to match your actual IR receiver pin
+#define DECODE_NEC      // Enable NEC protocol
+
+#define BUTTONS 21
+struct remoteFunctions {
+  uint16_t code;
+  const char* word;
+  bool state;
+};
+
+remoteFunctions lookupTable[BUTTONS] = {
+  {0x17, "Pwr",   0}, //0
+  {0x66, "Back",  0}, //1
+  {0x3 , "Home",  0}, //2
+  {0x19, "UP",    0}, //3
+  {0x33, "DOWN",  0}, //4
+  {0x1E, "LEFT",  0}, //5
+  {0x2D, "RIGHT", 0}, //6
+  {0x2A, "OK",    0}, //7
+  {0x78, "Replay",0}, //8
+  {0x62, "Sleep", 0},  //9
+  {0x61, "Star",  0}, //10
+  {0x34, "<<",    0}, // 11
+  {0x4C, "PlayPause",0}, //12
+  {0x55, ">>",    0}, //13
+  {0xF, "vol+",   0}, //14
+  {0x10, "vol-",  0}, //15
+  {0x20, "mute",  0}, //16
+  {0x52, "H_pts+",0}, //17
+  {0x4D, "H_pts-",0}, //18
+  {0x4B, "V_pts+",0}, //19
+  {0xC, "V_pts-", 0}  //20
+};
+
+void setup() {
+  Wire.begin();
+  Serial.begin(115200);
+
+  // OLED Init
+  oled.init();
+  oled.setContrast(255);
+  oled.flipH(0);
+  oled.flipV(0);
+  oled.setScale(2);
+  oled.clear();
+  oled.setCursorXY(0, 0);
+  oled.print(F("Ready"));
+  oled.update();
+
+  // IR Init
+  IrReceiver.begin(IR_RECEIVE_PIN, ENABLE_LED_FEEDBACK);
+  Serial.print(F("Ready to receive IR on pin "));
+  Serial.println(IR_RECEIVE_PIN);
+}
+
+void loop() {
+  if (IrReceiver.decode()) {
+    handleIRCommand(IrReceiver.decodedIRData.command);
+    IrReceiver.resume();  // Ready for next command
+  }
+}
+
+void handleIRCommand(uint16_t command) {
+  bool found = false;
+
+  for (int i = 0; i < BUTTONS; i++) {
+    if (lookupTable[i].code == command) {
+      oled.clear();
+      oled.setCursorXY(0, 0);
+      oled.print(F("IR:"));
+      oled.setCursorXY(0, 30);
+      oled.print(lookupTable[i].word);
+      oled.update();
+
+      Serial.print("IR: ");
+      Serial.println(lookupTable[i].word);
+      found = true;
+      break;
+    }
+  }
+
+  if (!found) {
+    Serial.print("Unknown command: 0x");
+    Serial.println(command, HEX);
+  }
+}
+
+
+void resetButtonState() { //reset all button states in the remote lookup table. 
+    // Reset button states for the current profile
+    for (int i = 1; i < BUTTONS; i++) {
+        lookupTable[i].state = 0;
+    }}

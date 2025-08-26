@@ -1,0 +1,40 @@
+//06_esp32_iot_playgnd_rotary_encoder_neopixels
+
+#define ENCODER_DO_NOT_USE_INTERRUPTS
+#include <Encoder.h>
+#include <Adafruit_NeoPixel.h>
+
+// === ENCODER SETUP ===
+Encoder myEnc(5, 32);  // Encoder pins
+long position = -999;
+
+// === NEOPIXEL SETUP ===
+#define LED_PIN     4
+#define NUM_LEDS    4
+Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("Basic NoInterrupts Test:");
+
+  strip.begin();
+  strip.setBrightness(10);  // Set brightness to 4%
+  strip.show();  // Initialize all pixels to 'off'
+}
+
+void loop() {
+  long newPos = myEnc.read();
+
+  // Optional: limit position range to 0–255 for color cycling
+  newPos = constrain(newPos, 0, 255);
+
+  if (newPos != position) {
+    position = newPos;
+    Serial.println(position);
+
+    // Convert encoder position to a color from the rainbow
+    uint32_t color = strip.ColorHSV((position * 256) % 65536);  // Cycle hue
+    strip.fill(color);  // Set all 4 LEDs to the same color
+    strip.show();
+  }
+}

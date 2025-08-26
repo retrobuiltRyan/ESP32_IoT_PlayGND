@@ -1,0 +1,16 @@
+//01_esp32_iot_plygnd_blink_gpio23
+
+const int LED = 23; // the physical 5mm LED is wired to GPIO 23
+// the setup function runs once when you press reset or power the board
+void setup() {
+  pinMode(LED, OUTPUT); // initialize digital pin LED as an output.
+}
+
+// the loop function runs over and over again forever
+void loop() {
+  digitalWrite(LED, HIGH);  // turn the LED on (HIGH is the voltage level)
+  delay(1000);                      // wait for a second
+  digitalWrite(LED, LOW);   // turn the LED off by making the voltage LOW
+  delay(1000);                      // wait for a second
+}
+
