@@ -56,5 +56,15 @@ BoM
 | U18, U19                                                                  | MP1584                  | 2   |                           |              | [AliExpress Link](https://www.aliexpress.us/item/3256806890547813.html)                  |
 | U21                                                                       | ESP32                   | 1   |                           |              | [Amazon Link](https://www.amazon.com/gp/product/B0D8Q8XFRK/) _(beware pinout)_            |
 
+## Misc 
+Try calling these in a desktop web browser for weather forecast in string format:
 
+*main call*
+https://api.weather.gov/points/40.4406,-79.9959
+
+*hourly forecast call*
+https://api.weather.gov/gridpoints/PBZ/78,66/forecast/hourly
+
+*weekly forecast*
+https://api.weather.gov/gridpoints/PBZ/78,66/forecast
 
