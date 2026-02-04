@@ -39,7 +39,7 @@ Adafruit_NeoPixel pixels(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 GyverOLED<SSH1106_128x64> oled; //the 1.3" OLED screen
 
 // =========================== WiFi Config =============================
-const char* ssid = "CMU-DEVICE";
+const char* ssid = "";
 const char* password = "";
 
 // =========================== Weather API Config =============================
@@ -307,4 +307,5 @@ void fetchForecast() {
   }
 
   printFormattedForecast(periods);
+
 }
